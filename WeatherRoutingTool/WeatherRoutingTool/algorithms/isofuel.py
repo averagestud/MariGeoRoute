@@ -89,7 +89,7 @@ class IsoFuel(IsoBased):
 
     def final_pruning(self):
         debug = False
-        if (debug):
+        if (debug == False):
             print('Final IsoFuel Pruning...')
             print('full_fuel_consumed:', self.full_fuel_consumed)
 
