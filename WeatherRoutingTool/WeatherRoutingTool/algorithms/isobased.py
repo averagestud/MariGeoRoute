@@ -11,6 +11,7 @@ from scipy.stats import binned_statistic
 
 import WeatherRoutingTool.utils.graphics as graphics
 import WeatherRoutingTool.utils.formatting as form
+import WeatherRoutingTool.utils.unit_conversion as units
 from WeatherRoutingTool.constraints.constraints import *
 from WeatherRoutingTool.ship.ship import Boat
 from WeatherRoutingTool.ship.shipparams import ShipParams
@@ -170,6 +171,7 @@ class IsoBased(RoutingAlg):
         self.current_variant = new_azi['azi1']  # center courses around gcr
         self.current_variant = np.repeat(self.current_variant, self.variant_segments + 1)
         self.current_variant = self.current_variant - delta_hdgs
+        self.current_variant = units.cut_angles(self.current_variant)
 
     def define_initial_variants(self):
         pass
@@ -228,7 +230,7 @@ class IsoBased(RoutingAlg):
             # self.update_fig('bp')
             self.pruning_per_step(
                 True)  # form.print_current_time('move_boat: Step=' + str(i), start_time)  # if i>9:  #
-            # self.update_fig('p')
+            self.update_fig('p')
 
         self.final_pruning()
         route = self.terminate()
@@ -247,7 +249,9 @@ class IsoBased(RoutingAlg):
         bs = np.repeat(bs, (self.get_current_azimuth().shape[0]), axis=0)
 
         ship_params = boat.get_fuel_per_time_netCDF(self.get_current_azimuth(), self.get_current_lats(),
-                                                    self.get_current_lons(), self.time)
+                                                    self.get_current_lons(), self.time, True)
+        units.cut_angles(self.current_variant)
+
         # ship_params.print()
 
         delta_time, delta_fuel, dist = self.get_delta_variables_netCDF(ship_params, bs)
@@ -277,10 +281,21 @@ class IsoBased(RoutingAlg):
         new_rpm = np.vstack((ship_params_single_step.get_rpm(), self.shipparams_per_step.get_rpm()))
         new_power = np.vstack((ship_params_single_step.get_power(), self.shipparams_per_step.get_power()))
         new_speed = np.vstack((ship_params_single_step.get_speed(), self.shipparams_per_step.get_speed()))
+        new_rwind = np.vstack((ship_params_single_step.get_rwind(), self.shipparams_per_step.get_rwind()))
+        new_rcalm = np.vstack((ship_params_single_step.get_rcalm(), self.shipparams_per_step.get_rcalm()))
+        new_rwaves = np.vstack((ship_params_single_step.get_rwaves(), self.shipparams_per_step.get_rwaves()))
+        new_rshallow = np.vstack((ship_params_single_step.get_rshallow(), self.shipparams_per_step.get_rshallow()))
+        new_rroughness = np.vstack(
+            (ship_params_single_step.get_rroughness(), self.shipparams_per_step.get_rroughness()))
 
         self.shipparams_per_step.set_rpm(new_rpm)
         self.shipparams_per_step.set_power(new_power)
         self.shipparams_per_step.set_speed(new_speed)
+        self.shipparams_per_step.set_rwind(new_rwind)
+        self.shipparams_per_step.set_rcalm(new_rcalm)
+        self.shipparams_per_step.set_rwaves(new_rwaves)
+        self.shipparams_per_step.set_rshallow(new_rshallow)
+        self.shipparams_per_step.set_rroughness(new_rroughness)
 
     def check_variant_def(self):
         if (not ((self.lats_per_step.shape[1] == self.lons_per_step.shape[1]) and (
@@ -357,8 +372,7 @@ class IsoBased(RoutingAlg):
             raise Exception('Pruned indices running out of bounds.')
 
     def pruning_per_step(self, trim=True):
-        # self.pruning_headings_centered(trim)
-        self.pruning_gcr_centered(trim)
+        self.pruning_headings_centered(trim)  # self.pruning_gcr_centered(trim)
 
     def pruning_gcr_centered(self, trim=True):
         '''
@@ -391,8 +405,8 @@ class IsoBased(RoutingAlg):
         # define pruning area
         azi0s = np.repeat(new_azi['azi1'], self.prune_segments + 1)
 
-        delta_hdgs = np.linspace(-self.prune_sector_deg_half, +self.prune_sector_deg_half,
-                                 self.prune_segments + 1)  # -90,+90,181
+        delta_hdgs = units.get_angle_bins(-self.prune_sector_deg_half, +self.prune_sector_deg_half,
+                                          self.prune_segments + 1)
 
         bins = azi0s - delta_hdgs
         bins = np.sort(bins)
@@ -448,8 +462,8 @@ class IsoBased(RoutingAlg):
             plt.savefig(final_path)
 
         # define pruning area
-        bins = np.linspace(mean_azimuth - self.prune_sector_deg_half, mean_azimuth + self.prune_sector_deg_half,
-                           self.prune_segments + 1)
+        bins = units.get_angle_bins(mean_azimuth - self.prune_sector_deg_half,
+                                    mean_azimuth + self.prune_sector_deg_half, self.prune_segments + 1)
 
         bins = np.sort(bins)
 
@@ -573,7 +587,7 @@ class IsoBased(RoutingAlg):
         is_constrained = [False for i in range(0, self.lats_per_step.shape[1])]
         if (debug):
             form.print_step('shape is_constraint before checking:' + str(len(is_constrained)), 1)
-        is_constrained = constraint_list.safe_crossing(self.lats_per_step[0], move['lat2'], self.lons_per_step[0],
+        is_constrained = constraint_list.safe_crossing(self.lats_per_step[0], self.lons_per_step[0], move['lat2'],
                                                        move['lon2'], self.time, is_constrained)
         if (debug):
             form.print_step('is_constrained after checking' + str(is_constrained), 1)
@@ -593,18 +607,26 @@ class IsoBased(RoutingAlg):
             print('dist_per_step', self.dist_per_step)
             print('dist', dist)
 
-        # start_lats = np.repeat(self.start_temp[0], self.lats_per_step.shape[1])
-        # start_lons = np.repeat(self.start_temp[1], self.lons_per_step.shape[1])
-        # gcrs = geod.inverse(start_lats, start_lons, move['lat2'], move['lon2'])       #calculate full distance
+        start_lats = np.repeat(self.start_temp[0], self.lats_per_step.shape[1])
+        start_lons = np.repeat(self.start_temp[1], self.lons_per_step.shape[1])
+        travel_dist = geod.inverse(start_lats, start_lons, move['lat2'], move['lon2'])  # calculate full distance
+        end_lats = np.repeat(self.finish_temp[0], self.lats_per_step.shape[1])
+        end_lons = np.repeat(self.finish_temp[1], self.lons_per_step.shape[1])
+        dist_to_dest = geod.inverse(move['lat2'], move['lon2'], end_lats, end_lons)  # calculate full distance
+
         # traveled, azimuth of gcr connecting start and new position
         # self.current_variant = gcrs['azi1']
         # self.current_azimuth = gcrs['azi1']
         # gcrs['s12'][is_constrained] = 0
+        travel_dist['s12'][is_constrained] = 0
 
         concatenated_distance = np.sum(self.dist_per_step, axis=0)
         concatenated_distance[is_constrained] = 0
 
-        self.full_dist_traveled = concatenated_distance
+        if np.all(dist_to_dest['s12']) > 0:
+            self.full_dist_traveled = travel_dist['s12'] * travel_dist['s12'] / dist_to_dest['s12']
+        else:
+            self.full_dist_traveled = travel_dist['s12']
         if (debug):
             print('full_dist_traveled:', self.full_dist_traveled)
 
