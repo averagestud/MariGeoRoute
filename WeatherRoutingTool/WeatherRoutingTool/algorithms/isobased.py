@@ -12,6 +12,7 @@ import pandas as pd
 
 import WeatherRoutingTool.utils.graphics as graphics
 import WeatherRoutingTool.utils.formatting as form
+import WeatherRoutingTool.utils.unit_conversion as units
 from WeatherRoutingTool.constraints.constraints import *
 from WeatherRoutingTool.ship.ship import Boat
 from WeatherRoutingTool.ship.shipparams import ShipParams
@@ -225,7 +226,7 @@ class IsoBased(RoutingAlg):
         if self.number_of_routes > 1:
             self.is_find_more_routes = True
         routing_steps = self.ncount
-        for i in range(routing_steps):
+        for i in range(0, routing_steps):
             logger.info(form.get_line_string())
             logger.info('Step ' + str(i))
             print('i = ',i)
@@ -587,7 +588,7 @@ class IsoBased(RoutingAlg):
         if (debug):
             print('binning for pruning', bins)
             print('current courses', self.current_variant)
-            print('full_dist_traveled', self.full_time_traveled)
+            print('full_dist_traveled', self.full_dist_traveled)
 
         idxs = []
 
@@ -860,8 +861,8 @@ class IsoBased(RoutingAlg):
         self.full_time_traveled += delta_time
         self.time += dt.timedelta(seconds=delta_time)
 
-    def check_bearing(self, dist, delta_time, delta_fuel):
-        debug = False
+    def check_bearing(self, dist):
+        debug = True
 
         nvariants = self.get_current_lons().shape[0]
         dist_to_dest = geod.inverse(self.get_current_lats(), self.get_current_lons(),
@@ -949,13 +950,20 @@ class IsoBased(RoutingAlg):
             print('dist_per_step', self.dist_per_step)
             print('dist', dist)
 
-        # start_lats = np.repeat(self.start_temp[0], self.lats_per_step.shape[1])
-        # start_lons = np.repeat(self.start_temp[1], self.lons_per_step.shape[1])
-        # gcrs = geod.inverse(start_lats, start_lons, move['lat2'], move['lon2'])       #calculate full distance
+        start_lats = np.repeat(self.start_temp[0], self.lats_per_step.shape[1])
+        start_lons = np.repeat(self.start_temp[1], self.lons_per_step.shape[1])
+        travel_dist = geod.inverse(start_lats, start_lons, move['lat2'],
+                                   move['lon2'])  # calculate full distance
+        end_lats = np.repeat(self.finish_temp[0], self.lats_per_step.shape[1])
+        end_lons = np.repeat(self.finish_temp[1], self.lons_per_step.shape[1])
+        dist_to_dest = geod.inverse(move['lat2'], move['lon2'], end_lats,
+                                    end_lons)  # calculate full distance
+
         # traveled, azimuth of gcr connecting start and new position
         # self.current_variant = gcrs['azi1']
         # self.current_azimuth = gcrs['azi1']
         # gcrs['s12'][is_constrained] = 0
+        travel_dist['s12'][is_constrained] = 0
 
         concatenated_distance = np.sum(self.dist_per_step, axis=0)
         concatenated_distance[is_constrained] = 0
