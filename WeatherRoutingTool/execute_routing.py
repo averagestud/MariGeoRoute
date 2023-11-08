@@ -21,6 +21,7 @@ if __name__ == "__main__":
     # initialise logging
     logger = logging.getLogger('WRT')
     logger.setLevel(logging.INFO)
+    print('test',config.COURSES_FILE)
     fh = logging.FileHandler(config.PERFORMANCE_LOG_FILE, mode='w')
     fh.setLevel(logging.WARNING)
     fhinfo = logging.FileHandler(config.INFO_LOG_FILE, mode='w')
@@ -88,7 +89,7 @@ if __name__ == "__main__":
     # constraint_list.add_neg_constraint(continuous_checks_land, 'continuous')
     constraint_list.print_settings()'''
 
-    water_depth = WaterDepth(config.DATA_MODE, config.BOAT_DRAUGHT, default_map, depthfile)
+    water_depth = WaterDepth('automatic', config.BOAT_DRAUGHT, default_map, depthfile)
     constraint_list = ConstraintsListFactory.get_constraints_list(
         ['land_crossing_global_land_mask', 'water_depth', 'on_map', 'via_waypoints'], data_mode=config.DATA_MODE,
         boat_draught=config.BOAT_DRAUGHT, map=default_map, depthfile=depthfile,

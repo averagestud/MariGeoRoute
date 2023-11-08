@@ -1,0 +1,36 @@
+<PAMDataset>
+  <Subdataset name="courses">
+    <PAMDataset>
+      <PAMRasterBand band="1">
+        <Histograms>
+          <HistItem>
+            <HistMin>-3.216052824629457</HistMin>
+            <HistMax>3.161718067819499</HistMax>
+            <BucketCount>31</BucketCount>
+            <IncludeOutOfRange>0</IncludeOutOfRange>
+            <Approximate>0</Approximate>
+            <HistCounts>2|1|2|2|1|0|0|0|0|0|0|0|0|0|0|0|0|0|0|2|2|2|2|2|2|2|2|2|2|1|2</HistCounts>
+          </HistItem>
+        </Histograms>
+        <Metadata>
+          <MDI key="STATISTICS_MAXIMUM">3.062065397625</MDI>
+          <MDI key="STATISTICS_MEAN">0.70755993574102</MDI>
+          <MDI key="STATISTICS_MINIMUM">-3.1164001544349</MDI>
+          <MDI key="STATISTICS_STDDEV">2.128550975092</MDI>
+        </Metadata>
+      </PAMRasterBand>
+    </PAMDataset>
+  </Subdataset>
+  <Subdataset name="speed">
+    <PAMDataset>
+      <PAMRasterBand band="1">
+        <Metadata>
+          <MDI key="STATISTICS_MAXIMUM">8</MDI>
+          <MDI key="STATISTICS_MEAN">8</MDI>
+          <MDI key="STATISTICS_MINIMUM">8</MDI>
+          <MDI key="STATISTICS_STDDEV">0</MDI>
+        </Metadata>
+      </PAMRasterBand>
+    </PAMDataset>
+  </Subdataset>
+</PAMDataset>

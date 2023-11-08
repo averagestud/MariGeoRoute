@@ -309,10 +309,15 @@ class IsoBased(RoutingAlg):
             print('move:', move)
 
         if (self.is_last_step or self.is_pos_constraint_step):
-            delta_time, delta_fuel, dist = self.get_delta_variables_netCDF_last_step(ship_params, bs)
+            delta_time_last_step, delta_fuel_last_step, dist_last_step = self.get_delta_variables_netCDF_last_step(ship_params, bs)
             if (self.is_last_step):
-                self.current_last_step_fuel = delta_fuel
 
+                print('bool_arr_reached_final', self.bool_arr_reached_final)
+                for i in range(len(self.bool_arr_reached_final)):
+                    if self.bool_arr_reached_final[i]:
+                        delta_time[i] = delta_time_last_step[i]
+                        delta_fuel[i] = delta_fuel_last_step[i]
+                        dist[i] = dist_last_step[i]
         is_constrained = self.check_constraints(move, constraint_list)
         #is_constrained = False
         self.update_position(move, is_constrained, dist)
@@ -829,10 +834,10 @@ class IsoBased(RoutingAlg):
                 self.current_last_step_dist = dist
                 self.current_last_step_dist_to_dest = dist_to_dest['s12']
 
-                bool_arr_reached_final = dist_to_dest['s12'] < dist
-                print('bool_arr_reached_final', bool_arr_reached_final)
-                for i in range(len(bool_arr_reached_final)):
-                    if bool_arr_reached_final[i]:
+                self.bool_arr_reached_final = dist_to_dest['s12'] < dist
+                print('bool_arr_reached_final', self.bool_arr_reached_final)
+                for i in range(len(self.bool_arr_reached_final)):
+                    if self.bool_arr_reached_final[i]:
                         move['azi2'][i] = dist_to_dest['azi1'][i]
                         move['lat2'][i] = new_lat[i]
                         move['lon2'][i] = new_lon[i]
