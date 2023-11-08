@@ -69,6 +69,9 @@ class IsoBased(RoutingAlg):
     expected_speed_kts: int
     prune_sector_deg_half: int  # angular range of azimuth that is considered for pruning (only one half)
     prune_segments: int  # number of azimuth bins that are used for pruning
+    prune_gcr_centered: bool
+    prune_bearings: bool
+    minimisation_criterion: str
 
     is_find_more_routes: bool
     number_of_routes: int
@@ -98,13 +101,23 @@ class IsoBased(RoutingAlg):
         self.start_temp = self.start
         self.gcr_azi_temp = self.gcr_azi
 
+
         self.is_find_more_routes = False
         self.number_of_routes = 16
         self.current_number_of_routes = 0
 
+        self.minimisation_criterion = 'squareddist_over_disttodest'
 
     def print_init(self):
         RoutingAlg.print_init(self)
+        logger.info(form.get_log_step('pruning settings', 1))
+        logger.info(form.get_log_step('ISOCHRONE_PRUNE_SECTOR_DEG_HALF: ' + str(self.prune_sector_deg_half), 2))
+        logger.info(form.get_log_step('ISOCHRONE_PRUNE_SEGMENTS: ' + str(self.prune_segments), 2))
+        logger.info(form.get_log_step('ISOCHRONE_PRUNE_GCR_CENTERED: ' + str(self.prune_gcr_centered), 2))
+        logger.info(form.get_log_step('ISOCHRONE_PRUNE_BEARING: ' + str(self.prune_bearings), 2))
+        logger.info(form.get_log_step('ISOCHRONE_MINIMISATION_CRITERION: ' + str(self.minimisation_criterion), 2))
+        logger.info(form.get_log_step('ROUTER_HDGS_SEGMENTS: ' + str(self.variant_segments), 2))
+        logger.info(form.get_log_step('ROUTER_HDGS_INCREMENTS_DEG: ' + str(self.variant_increments_deg), 2))
 
     def print_current_status(self):
         print('PRINTING ALG SETTINGS')
@@ -567,7 +580,7 @@ class IsoBased(RoutingAlg):
                 'define_variants: number of rows not matching! count = ' + str(self.count) + ' lats per step ' + str(
                     self.lats_per_step.shape[0]))
 
-    def pruning(self, trim, bins):
+    def pruning(self, trim, bins, larger_direction_based=True):
         debug = False
         valid_pruning_segments = -99
 
@@ -577,8 +590,14 @@ class IsoBased(RoutingAlg):
             print('full_dist_traveled', self.full_time_traveled)
 
         idxs = []
-        bin_stat, bin_edges, bin_number = binned_statistic(self.current_variant, self.full_dist_traveled,
-                                                           statistic=np.nanmax, bins=bins)
+
+        bin_stat = None
+        bin_edges = None
+        bin_number = None
+        if larger_direction_based:
+            bin_stat, bin_edges, bin_number = self.larger_direction_based_pruning(bins)
+        else:
+            bin_stat, bin_edges, bin_number = self.courses_based_pruning(bins)
 
         if trim:
             for i in range(len(bin_edges) - 1):
@@ -627,9 +646,27 @@ class IsoBased(RoutingAlg):
         except IndexError:
             raise Exception('Pruned indices running out of bounds.')
 
+    def courses_based_pruning(self, bins):
+        bin_stat, bin_edges, bin_number = binned_statistic(self.current_variant, self.full_dist_traveled,
+                                                           statistic=np.nanmax, bins=bins)
+        return bin_stat, bin_edges, bin_number
+
+    def larger_direction_based_pruning(self, bins):
+        start_lats = np.repeat(self.start_temp[0], self.lats_per_step.shape[1])
+        start_lons = np.repeat(self.start_temp[1], self.lons_per_step.shape[1])
+        larger_direction = geod.inverse(start_lats, start_lons, self.lats_per_step[0], self.lons_per_step[0])
+        larger_direction = larger_direction['azi1']
+        bin_stat, bin_edges, bin_number = binned_statistic(larger_direction, self.full_dist_traveled,
+                                                           statistic=np.nanmax, bins=bins)
+        return bin_stat, bin_edges, bin_number
+
     def pruning_per_step(self, trim=True):
-        # self.pruning_headings_centered(trim)
-        self.pruning_gcr_centered(trim)
+
+        if self.prune_gcr_centered:
+            self.pruning_gcr_centered(trim)
+        else:
+            self.pruning_headings_centered(trim)
+
 
     def pruning_gcr_centered(self, trim=True):
         '''
@@ -649,7 +686,10 @@ class IsoBased(RoutingAlg):
         # of the azimuth defined by the distance between the start point and the destination for the mean distance
         # travelled
         # during the current routing step.
-        mean_dist = np.mean(self.full_dist_traveled)
+        start_lats = np.repeat(self.start_temp[0], self.lats_per_step.shape[1])
+        start_lons = np.repeat(self.start_temp[1], self.lons_per_step.shape[1])
+        full_travel_dist = geod.inverse(start_lats, start_lons, self.lats_per_step[0], self.lons_per_step[1])
+        mean_dist = np.mean(full_travel_dist['s12'])
         gcr_point = geod.direct([self.start_temp[0]], [self.start_temp[1]], self.gcr_azi_temp, mean_dist)
 
         new_azi = geod.inverse(gcr_point['lat2'], gcr_point['lon2'], [self.finish_temp[0]], [self.finish_temp[1]])
@@ -662,13 +702,20 @@ class IsoBased(RoutingAlg):
         # define pruning area
         azi0s = np.repeat(new_azi['azi1'], self.prune_segments + 1)
 
+
         delta_hdgs = np.linspace(-self.prune_sector_deg_half, +self.prune_sector_deg_half,
                                  self.prune_segments + 1)  # -90,+90,181
 
-        bins = azi0s - delta_hdgs
+        bins = units.cut_angles(azi0s - delta_hdgs)
         bins = np.sort(bins)
 
-        self.pruning(trim, bins)
+        if self.prune_bearings:
+            self.pruning(trim, bins, False)
+        else:
+            if ((self.ncount % 10) < 3) and (self.ncount > 10):
+                self.pruning(trim, bins, True)
+            else:
+                self.pruning(trim, bins, False)
 
     def pruning_headings_centered(self, trim=True):
         '''
@@ -714,9 +761,10 @@ class IsoBased(RoutingAlg):
             self.ax.plot([self.lons_per_step[1][meadian_indx], upper_bound["lon2"]],
                          [self.lats_per_step[1][meadian_indx], upper_bound["lat2"]], color="blue")
 
-            final_path = self.figure_path + '/fig' + str(self.count) + '_median.png'
-            print('Saving updated figure to ', final_path)
-            plt.savefig(final_path)
+            if self.figure_path is not None:
+                final_path = self.figure_path + '/fig' + str(self.count) + '_median.png'
+                print('Saving updated figure to ', final_path)
+                plt.savefig(final_path)
 
         # define pruning area
         bins = np.linspace(mean_azimuth - self.prune_sector_deg_half, mean_azimuth + self.prune_sector_deg_half,
@@ -727,14 +775,25 @@ class IsoBased(RoutingAlg):
         if debug:
             print('bins: ', bins)
 
-        self.pruning(trim, bins)
+        if self.prune_bearings:
+            self.pruning(trim, bins, False)
+        else:
+            if ((self.ncount % 10) < 3) and (self.ncount > 10):
+                self.pruning(trim, bins, True)
+            else:
+                self.pruning(trim, bins, False)
 
     def define_variants_per_step(self):
         self.define_variants()
 
-    def set_pruning_settings(self, sector_deg_half, seg):
+    def set_pruning_settings(self, sector_deg_half, seg, prune_bearings=False, prune_gcr_centered=True):
         self.prune_sector_deg_half = sector_deg_half
         self.prune_segments = seg
+        self.prune_bearings = prune_bearings
+        self.prune_gcr_centered = prune_gcr_centered
+
+    def set_minimisation_criterion(self, min_str):
+        self.minimisation_criterion = min_str
 
     def set_variant_segments(self, seg, inc):
         self.variant_segments = seg
@@ -901,7 +960,14 @@ class IsoBased(RoutingAlg):
         concatenated_distance = np.sum(self.dist_per_step, axis=0)
         concatenated_distance[is_constrained] = 0
 
-        self.full_dist_traveled = concatenated_distance
+        if np.all(dist_to_dest['s12']) > 0:
+            if self.minimisation_criterion == 'squareddist_over_disttodest':
+                self.full_dist_traveled = travel_dist['s12'] * travel_dist['s12'] / dist_to_dest['s12']
+            if self.minimisation_criterion == 'dist':
+                self.full_dist_traveled = travel_dist['s12']
+        else:
+            self.full_dist_traveled = travel_dist['s12']
+
         if (debug):
             print('full_dist_traveled:', self.full_dist_traveled)
 
@@ -916,7 +982,13 @@ class IsoBased(RoutingAlg):
     def get_delta_variables_netCDF_last_step(self, boat, wind, bs):
         pass
 
-    def init_fig(self, map, showDepth=True):
+
+    #def init_fig(self, map, showDepth=True):
+
+    def init_fig(self, water_depth, map, showDepth=True):
+        if self.figure_path is None:
+            return
+
         self.showDepth = showDepth
         plt.rcParams['font.size'] = 20
         self.fig, self.ax = plt.subplots(figsize=(12, 10))
@@ -966,6 +1038,8 @@ class IsoBased(RoutingAlg):
         plt.title('')
 
     def update_fig(self, status):
+        if self.figure_path is None:
+            return
         fig = self.fig
         route_ensemble = []
         self.ax.remove()
@@ -1013,7 +1087,10 @@ class IsoBased(RoutingAlg):
         constraint_list.init_positive_lists(self.start, self.finish)
         self.finish_temp = constraint_list.get_current_destination()
         self.start_temp = constraint_list.get_current_start()
+        print('start_temp: ', self.start_temp)
+        print('finish_temp: ', self.finish_temp)
         self.gcr_azi_temp = self.calculate_gcr(self.start_temp, self.finish_temp)
+        print('gcr_azi_temp: ', self.gcr_azi_temp)
 
         print('Currently going from')
         print(self.start_temp)

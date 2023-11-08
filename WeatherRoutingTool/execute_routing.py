@@ -1,10 +1,11 @@
+import argparse
 import datetime as dt
 import logging
 import warnings
 import logging.handlers
 
-import WeatherRoutingTool.config as config
 import WeatherRoutingTool.utils.graphics as graphics
+from WeatherRoutingTool.config import Config
 from WeatherRoutingTool.ship.ship import Tanker
 from WeatherRoutingTool.weather_factory import WeatherFactory
 from WeatherRoutingTool.constraints.constraints import *
@@ -17,20 +18,41 @@ def merge_figures_to_gif(path, nof_figures):
 
 
 if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description='Weather Routing Tool')
+    parser.add_argument('-f', '--file',
+                        help="Config file name (absolute path)",
+                        required=True, type=str)
+    parser.add_argument('--performance-log-file',
+                        help="Performance logging file name (absolute path). Default: '/dev/stdout'",
+                        required=False, type=str, default='/dev/stdout')
+    parser.add_argument('--info-log-file',
+                        help="Info logging file name (absolute path). Default: '/dev/stdout'",
+                        required=False, type=str, default='/dev/stdout')
+    args = parser.parse_args()
+    if not args.file:
+        raise RuntimeError("No config file name provided!")
+
     ##
     # initialise logging
     logger = logging.getLogger('WRT')
     logger.setLevel(logging.INFO)
-    print('test',config.COURSES_FILE)
-    fh = logging.FileHandler(config.PERFORMANCE_LOG_FILE, mode='w')
+
+    fh = logging.FileHandler(args.performance_log_file, mode='w')
+
     fh.setLevel(logging.WARNING)
-    fhinfo = logging.FileHandler(config.INFO_LOG_FILE, mode='w')
+    fhinfo = logging.FileHandler(args.info_log_file, mode='w')
     fhinfo.setLevel(logging.INFO)
     formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
     fh.setFormatter(formatter)
     fhinfo.setFormatter(formatter)
     logger.addHandler(fh)
     logger.addHandler(fhinfo)
+
+    ##
+    # create config object
+    config = Config(file_name=args.file)
+    config.print()
 
     ##
     # suppress warnings from mariPower
@@ -41,7 +63,6 @@ if __name__ == "__main__":
     windfile = config.WEATHER_DATA
     depthfile = config.DEPTH_DATA
     coursesfile = config.COURSES_FILE
-    figurepath = config.FIGURE_PATH
     routepath = config.ROUTE_PATH
     time_resolution = config.DELTA_TIME_FORECAST
     time_forecast = config.TIME_FORECAST
@@ -92,12 +113,19 @@ if __name__ == "__main__":
     water_depth = WaterDepth('automatic', config.BOAT_DRAUGHT, default_map, depthfile)
     constraint_list = ConstraintsListFactory.get_constraints_list(
         ['land_crossing_global_land_mask', 'water_depth', 'on_map', 'via_waypoints'], data_mode=config.DATA_MODE,
-        boat_draught=config.BOAT_DRAUGHT, map=default_map, depthfile=depthfile,
-        waypoints=[(35.534, 17.035), (38.32, 8.04), (43.184, 9.438)])
-
+        boat_draught=config.BOAT_DRAUGHT, map_size=default_map, depthfile=depthfile,  # waypoints Alexandria - Marseille
+        # waypoints=[(35.534, 17.035), (39.431, 7.129)])  # original
+        # waypoints=[(35.534, 17.035), (37.766, 11.056), (41.287, 9.138)]) #fastest
+        # waypoints=[(35.534, 17.035), (38.123, 15.557), (43.270, 9.331)]) # best FOC
+        waypoints=[(35.534, 17.035), (37.766, 11.056), (43.270, 9.331)])  # best weather
+    # waypoints Columbo - Singapore
+    # waypoints = [(5.430, 88.759)])  # original
+    # waypoints = [(5.430, 88.759), (-5.968, 105.951)])  # fastest
+    # waypoints San Jose - Anchorage
+    # waypoints=[(43.171, -132.077), (55.483, -141.686)])  # original
     # *******************************************
     # initialise route
-    min_fuel_route = RoutingAlgFactory.get_routing_alg('isofuel')
+    min_fuel_route = RoutingAlgFactory.get_routing_alg(config)
     min_fuel_route.init_fig(water_depth, default_map)
 
     # *******************************************
