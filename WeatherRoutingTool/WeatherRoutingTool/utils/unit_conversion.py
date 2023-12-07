@@ -5,9 +5,6 @@ from datetime import timezone
 
 import numpy as np
 
-from backports.zoneinfo import ZoneInfo
-
-
 import WeatherRoutingTool.utils.formatting as form
 
 logger = logging.getLogger('WRT.weather')
