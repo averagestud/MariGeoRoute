@@ -16,7 +16,8 @@ def test_plot_power_vs_dist():
     fuel_consumed = np.array([1, 2, 1])
     dist_per_step = np.array([1, 4, 5])
     time_per_step = np.array(
-        [datetime.datetime(2022, 12, 19), datetime.datetime(2022, 12, 19) + datetime.timedelta(days=180),
+        [datetime.datetime(2022, 12, 19),
+         datetime.datetime(2022, 12, 19) + datetime.timedelta(days=180),
          datetime.datetime(2022, 12, 19) + datetime.timedelta(days=360)])
 
     sp = ShipParams(fuel_consumed, dummy_list, dummy_list, dummy_list, dummy_list, dummy_list, dummy_list, dummy_list,

@@ -72,14 +72,14 @@ class Constraint:
     #    return self.resource_type
 
     def print_constraint_message(self):
-        print(self.message)
+        logger.info(self.message)
         pass
 
     def constraint_on_point(self, lat, lon, time):
         pass
 
     def print_debug(self, message):
-        print(self.name + str(": ") + str(message))
+        logger.debug(self.name + str(": ") + str(message))
 
     def print_info(self):
         pass
@@ -111,6 +111,9 @@ class PositiveConstraintPoint(PositiveConstraint):
 
     def get_points(self):
         return self.coord
+
+    def print_info(self):
+        logger.info(form.get_log_step("intermediate waypoints activated for: " + str(self.coord), 1))
 
 
 class NegativeContraint(Constraint):
@@ -227,7 +230,7 @@ class ConstraintsList:
         self.pos_size = 0
 
     def print_constraints_crossed(self):
-        print("Discarding point as:")
+        logger.info("Discarding point as:")
         for iConst in range(0, len(self.constraints_crossed)):
             form.print_step(str(self.constraints_crossed[iConst]), 1)
 
@@ -312,6 +315,7 @@ class ConstraintsList:
             is_constrained_temp = self.negative_constraints_discrete[iConst].constraint_on_point(lat, lon, current_time)
             if is_constrained_temp.any():
                 self.constraints_crossed.append(self.negative_constraints_discrete[iConst].message)
+            # ToDo: use logger.debug and args.debug
             if debug:
                 print("is_constrained_temp: ", is_constrained_temp)
                 print("is_constrained: ", is_constrained)  # form.print_current_time('constraint execution', start_time)
@@ -338,16 +342,18 @@ class ConstraintsList:
         is_constrained = [False for i in range(0, len(lat_start))]
         is_constrained = np.array(is_constrained)
 
+        # ToDo: use logger.debug and args.debug
         if debug:
             print('Entering continuous checks')
             print('Length of latitudes: ' + str(len(lat_start)))
 
         for constr in self.negative_constraints_continuous:
             is_constrained_temp = constr.check_crossing(lat_start, lon_start, lat_end, lon_end, current_time)
-            print('is_constrained_temp: ', is_constrained_temp)
-            print('is_constrained: ', is_constrained)
+            logger.info('is_constrained_temp: ', is_constrained_temp)
+            logger.info('is_constrained: ', is_constrained)
             is_constrained += is_constrained_temp
-            print('is_constrained end of loop: ', is_constrained)
+            logger.info('is_constrained end of loop: ', is_constrained)
+        # ToDo: use logger.debug and args.debug
         if debug:
             print('is_constrained_final: ', is_constrained)
         return is_constrained
@@ -453,7 +459,7 @@ class WaveHeight(NegativeConstraintFromWeather):
     def constraint_on_point(self, lat, lon, time):
         # self.print_debug('checking point: ' + str(lat) + ',' + str(lon))
         self.check_weather(lat, lon, time)
-        # print('current_wave_height:', self.current_wave_height)
+        # logger.info('current_wave_height:', self.current_wave_height)
         return self.current_wave_height > self.max_wave_height
 
     def print_info(self):
@@ -506,8 +512,9 @@ class WaterDepth(NegativeContraint):
         res_x = 30 / 3600  # 30 arc seconds to degrees
         res_y = 30 / 3600  # 30 arc seconds to degrees
         query = {'resolution': (res_x, res_y), 'align': (res_x / 2, res_y / 2),
-                 'latitude': (self.map_size.lat1, self.map_size.lat2), 'longitude': (self.map_size.lon1, self.map_size.lon2),
-                 'output_crs': 'EPSG:4326', 'measurements': measurements}
+                 'latitude': (self.map_size.lat1, self.map_size.lat2),
+                 'longitude': (self.map_size.lon1, self.map_size.lon2), 'output_crs': 'EPSG:4326',
+                 'measurements': measurements}
         ds_datacube = dc.load(product=product_name, **query).drop('time')
         if self._has_scaling(ds_datacube):
             ds_datacube = self._scale(ds_datacube)
@@ -520,8 +527,8 @@ class WaterDepth(NegativeContraint):
 
         downloader = DownloaderFactory.get_downloader(downloader_type='opendap', platform='etoponcei')
         depth_data = downloader.download()
-        depth_data_chunked = depth_data.chunk(chunks={"lat": "100MB", "lon": "100MB"})
-        depth_data_chunked = depth_data_chunked.rename(z="depth", lat="latitude", lon="longitude")
+        depth_data_chunked = depth_data.chunk(chunks={"latitude": "100MB", "longitude": "100MB"})
+        depth_data_chunked = depth_data_chunked.rename(z="depth")
         depth_data_chunked = depth_data_chunked.sel(latitude=slice(self.map_size.lat1, self.map_size.lat2),
                                                     longitude=slice(self.map_size.lon1, self.map_size.lon2))
         # Note: if depth_path already exists, the file will be overwritten!
@@ -560,10 +567,9 @@ class WaterDepth(NegativeContraint):
         level_diff = 10
 
         ds_depth = xr.open_dataset(path)
-        depth = ds_depth["z"].where(
-            (ds_depth.lat > self.map_size.lat1) & (ds_depth.lat < self.map_size.lat2) & (
-                    ds_depth.lon > self.map_size.lon1) & (ds_depth.lon < self.map_size.lon2) & (
-                    ds_depth.z < 0), drop=True, )
+        depth = ds_depth["z"].where((ds_depth.lat > self.map_size.lat1) & (ds_depth.lat < self.map_size.lat2) & (
+                ds_depth.lon > self.map_size.lon1) & (ds_depth.lon < self.map_size.lon2) & (ds_depth.z < 0),
+                                    drop=True, )
 
         # depth = ds_depth['deptho'].where((ds_depth.latitude > lat_start) & (ds_depth.latitude < lat_end) & (
         # ds_depth.longitude > lon_start) & (ds_depth.longitude < lon_end),drop=True) #.where((ds_depth.deptho>-100)
@@ -593,8 +599,8 @@ class WaterDepth(NegativeContraint):
 
         self.depth_data = ds_depth_coarsened.where(
             (ds_depth_coarsened.latitude > self.map_size.lat1) & (ds_depth_coarsened.latitude < self.map_size.lat2) & (
-                    ds_depth_coarsened.longitude > self.map_size.lon1) & (ds_depth_coarsened.longitude < self.map_size.lon2) & (
-                    ds_depth_coarsened.depth < 0), drop=True, )
+                    ds_depth_coarsened.longitude > self.map_size.lon1) & (
+                    ds_depth_coarsened.longitude < self.map_size.lon2) & (ds_depth_coarsened.depth < 0), drop=True, )
 
         ax = fig.add_subplot(111, projection=ccrs.PlateCarree())
         cp = self.depth_data["depth"].plot.contourf(ax=ax, levels=np.arange(-100, 0, level_diff),
@@ -793,7 +799,7 @@ class SeamarkCrossing(ContinuousCheck):
         else:
             gdf = gpd.read_postgis(con=engine, sql=query, geom_col="geom", crs="epsg:4326")
             gdf = gdf[gdf["geom"] != None]
-            print("engine connection failed")
+            logger.warning("engine connection failed")
 
         # read timestamp type data as string
         # gdf['tstamp']=gdf['tstamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
@@ -837,7 +843,7 @@ class SeamarkCrossing(ContinuousCheck):
         else:
             gdf = gpd.read_postgis(con=engine, sql=query, geom_col="geom", crs="epsg:4326")
             gdf = gdf[gdf["geom"] != None]
-            print("engine connection failed")
+            logger.warning("engine connection failed")
 
         # read timestamp type data as string
         # gdf['tstamp']=gdf['tstamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
@@ -1034,7 +1040,7 @@ class SeamarkCrossing(ContinuousCheck):
                         gdf_list.append(gdf1)
 
                 gdf_concat = pd.concat(gdf_list)
-                print(f'concat geodataframe is {gdf_concat}')
+                logger.info(f'concat geodataframe is {gdf_concat}')
 
                 return gdf_concat
         else:
@@ -1044,7 +1050,7 @@ class SeamarkCrossing(ContinuousCheck):
 
             if ("nodes" in seamark_object) and ("ways" in seamark_object):
                 gdf = self.concat_nodes_ways()
-                print(f"concat gdf {gdf}")
+                logger.info(f"concat gdf {gdf}")
                 gdf_list = []
                 for i in range(0, len(seamark_list)):
                     if isinstance(gdf["tags"].iloc[i], str):
@@ -1056,10 +1062,10 @@ class SeamarkCrossing(ContinuousCheck):
                         gdf_list.append(gdf1)
 
                 gdf_concat = pd.concat(gdf_list)
-                print(f'concat geodataframe is {gdf_concat}')
+                logger.info(f'concat geodataframe is {gdf_concat}')
 
                 return gdf_concat
-            print("error in engine and query initialisation")
+            logger.error("error in engine and query initialisation")
 
     def check_crossing(self, lat_start, lon_start, lat_end, lon_end, engine=None, query=None, seamark_list=None,
                        seamark_object=None, time=None):  # best way to go (keep just these arguments)
@@ -1105,7 +1111,7 @@ class SeamarkCrossing(ContinuousCheck):
                 # for predicate in self.predicates:
                 concat_df = concat_gdf
                 # concat_df = ways_gdf  # with all the ways from the seamarks data
-                print(f'PRINT CONCAT DF {concat_df}')
+                logger.info(f'PRINT CONCAT DF {concat_df}')
                 tree = STRtree(concat_df["geom"])
                 geom_object = tree.query(route_df["geom"], predicate='intersects').tolist()
 
@@ -1113,11 +1119,11 @@ class SeamarkCrossing(ContinuousCheck):
                 if geom_object == [[], []] or geom_object == []:
                     # if route is not constrained
                     query_tree.append(False)
-                    print(f'NO CROSSING for  {line} in the query tree: {query_tree} ')
+                    logger.info(f'NO CROSSING for  {line} in the query tree: {query_tree} ')
                 else:
                     # if route is constrained
                     query_tree.append(True)
-                    print(f'CROSSING for  {line} in the query tree: {query_tree} ')
+                    logger.info(f'CROSSING for  {line} in the query tree: {query_tree} ')
 
             # returns a list bools (spatial relation)
             return query_tree
@@ -1126,7 +1132,7 @@ class SeamarkCrossing(ContinuousCheck):
                                                               seamark_object=seamark_object)
 
             # generating the LineString geometry from start and end point
-            print(type(lat_start))
+            logger.info(type(lat_start))
             for i in range(len(lat_start)):
                 start_point = Point(lon_start[i], lat_start[i])
                 end_point = Point(lon_end[i], lat_end[i])
@@ -1138,7 +1144,7 @@ class SeamarkCrossing(ContinuousCheck):
                 # checking the spatial relations using shapely.STRTree spatial indexing method
                 # for predicate in self.predicates:
                 concat_df = concat_gdf
-                print(f'PRINT CONCAT DF {concat_df}')
+                logger.info(f'PRINT CONCAT DF {concat_df}')
                 tree = STRtree(concat_df["geom"])
                 geom_object = tree.query(route_df["geometry"], predicate='intersects').tolist()
 
@@ -1146,11 +1152,11 @@ class SeamarkCrossing(ContinuousCheck):
                 if geom_object == [[], []] or geom_object == []:
                     # if route is not constrained
                     query_tree.append(False)
-                    print(f'NO CROSSING for  {line} in the query tree: {query_tree} ')
+                    logger.info(f'NO CROSSING for  {line} in the query tree: {query_tree} ')
                 else:
                     # if route is constrained
                     query_tree.append(True)
-                    print(f'CROSSING for  {line} in the query tree: {query_tree} ')
+                    logger.info(f'CROSSING for  {line} in the query tree: {query_tree} ')
 
             # returns a list bools (spatial relation)
             return query_tree

@@ -1,11 +1,9 @@
 import argparse
-import datetime as dt
-import logging
 import warnings
-import logging.handlers
+from datetime import datetime
 
 import WeatherRoutingTool.utils.graphics as graphics
-from WeatherRoutingTool.config import Config
+from WeatherRoutingTool.config import Config, set_up_logging
 from WeatherRoutingTool.ship.ship import Tanker
 from WeatherRoutingTool.weather_factory import WeatherFactory
 from WeatherRoutingTool.constraints.constraints import *
@@ -20,34 +18,27 @@ def merge_figures_to_gif(path, nof_figures):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Weather Routing Tool')
-    parser.add_argument('-f', '--file',
-                        help="Config file name (absolute path)",
-                        required=True, type=str)
-    parser.add_argument('--performance-log-file',
-                        help="Performance logging file name (absolute path). Default: '/dev/stdout'",
-                        required=False, type=str, default='/dev/stdout')
+    parser.add_argument('-f', '--file', help="Config file name (absolute path)", required=True, type=str)
+    parser.add_argument('--warnings-log-file',
+                        help="Logging file name (absolute path) for warnings and above.", required=False, type=str)
     parser.add_argument('--info-log-file',
-                        help="Info logging file name (absolute path). Default: '/dev/stdout'",
-                        required=False, type=str, default='/dev/stdout')
+                        help="Logging file name (absolute path) for info and above.", required=False, type=str)
+    parser.add_argument('--debug', help="Enable debug mode. <True|False>. Defaults to 'False'.",
+                        required=False, type=str, default='False')
     args = parser.parse_args()
     if not args.file:
         raise RuntimeError("No config file name provided!")
+    debug_str = str(args.debug).lower()
+    if debug_str == 'true':
+        args.debug = True
+    elif debug_str == 'false':
+        args.debug = False
+    else:
+        raise ValueError("--debug does not have a valid value")
 
     ##
     # initialise logging
-    logger = logging.getLogger('WRT')
-    logger.setLevel(logging.INFO)
-
-    fh = logging.FileHandler(args.performance_log_file, mode='w')
-
-    fh.setLevel(logging.WARNING)
-    fhinfo = logging.FileHandler(args.info_log_file, mode='w')
-    fhinfo.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
-    fh.setFormatter(formatter)
-    fhinfo.setFormatter(formatter)
-    logger.addHandler(fh)
-    logger.addHandler(fhinfo)
+    set_up_logging(args.info_log_file, args.warnings_log_file, args.debug)
 
     ##
     # create config object
@@ -67,7 +58,7 @@ if __name__ == "__main__":
     time_resolution = config.DELTA_TIME_FORECAST
     time_forecast = config.TIME_FORECAST
     lat1, lon1, lat2, lon2 = config.DEFAULT_MAP
-    departure_time = dt.datetime.strptime(config.DEPARTURE_TIME, '%Y-%m-%dT%H:%MZ')
+    departure_time = datetime.strptime(config.DEPARTURE_TIME, '%Y-%m-%dT%H:%MZ')
     default_map = Map(lat1, lon1, lat2, lon2)
 
     # *******************************************
@@ -112,21 +103,13 @@ if __name__ == "__main__":
 
     water_depth = WaterDepth(config.DATA_MODE, config.BOAT_DRAUGHT, default_map, depthfile)
     constraint_list = ConstraintsListFactory.get_constraints_list(
-        ['land_crossing_global_land_mask'], data_mode=config.DATA_MODE,
-        boat_draught=config.BOAT_DRAUGHT, map_size=default_map, depthfile=depthfile)  # waypoints Alexandria - Marseille
-        # waypoints=[(35.534, 17.035), (39.431, 7.129)])  # original
-        # waypoints=[(35.534, 17.035), (37.766, 11.056), (41.287, 9.138)]) #fastest
-        # waypoints=[(35.534, 17.035), (38.123, 15.557), (43.270, 9.331)]) # best FOC
-        # waypoints=[(35.534, 17.035), (37.766, 11.056), (43.270, 9.331)])  # best weather
-    # waypoints Columbo - Singapore
-    # waypoints = [(5.430, 88.759)])  # original
-    # waypoints = [(5.430, 88.759), (-5.968, 105.951)])  # fastest
-    # waypoints San Jose - Anchorage
-    # waypoints=[(43.171, -132.077), (55.483, -141.686)])  # original
+        constraints_string_list=config.CONSTRAINTS_LIST, data_mode=config.DATA_MODE, boat_draught=config.BOAT_DRAUGHT,
+        map_size=default_map, depthfile=depthfile, waypoints=config.INTERMEDIATE_WAYPOINTS)
+
     # *******************************************
     # initialise route
     min_fuel_route = RoutingAlgFactory.get_routing_alg(config)
-    min_fuel_route.init_fig(water_depth, default_map)
+    min_fuel_route.init_fig(water_depth=water_depth, map_size=default_map)
 
     # *******************************************
     # routing

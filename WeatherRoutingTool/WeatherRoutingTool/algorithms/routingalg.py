@@ -12,12 +12,13 @@ import WeatherRoutingTool.utils.formatting as form
 from WeatherRoutingTool.constraints.constraints import *
 from WeatherRoutingTool.ship.ship import Boat
 from WeatherRoutingTool.routeparams import RouteParams
+from WeatherRoutingTool.utils.graphics import get_figure_path
 from WeatherRoutingTool.weather import WeatherCond
 
 logger = logging.getLogger('WRT.routingalg')
 
 
-class RoutingAlg():
+class RoutingAlg:
     """
         Isochrone data structure with typing.
                 Parameters:
@@ -30,8 +31,6 @@ class RoutingAlg():
                     time1: current datetime
                     elapsed: complete elapsed timedelta
         """
-    ncount: int  # total number of routing steps
-    count: int  # current routing step
 
     start: tuple  # lat, lon at start
     finish: tuple  # lat, lon at end
@@ -42,19 +41,19 @@ class RoutingAlg():
     route_ensemble: list
     figure_path: str
 
-    def __init__(self, start, finish, departure_time, figure_path=None):
-        self.count = 0
-        self.start = start
-        self.finish = finish
-        self.departure_time = departure_time
+    def __init__(self, config):
+        lat_start, lon_start, lat_end, lon_end = config.DEFAULT_ROUTE
+        self.start = (lat_start, lon_start)
+        self.finish = (lat_end, lon_end)
+        self.departure_time = dt.datetime.strptime(config.DEPARTURE_TIME, '%Y-%m-%dT%H:%MZ')
 
-        gcr = self.calculate_gcr(start, finish)
+        gcr = self.calculate_gcr(self.start, self.finish)
         self.current_azimuth = gcr
         self.gcr_azi = gcr
 
-        self.figure_path = figure_path
+        self.figure_path = get_figure_path()
 
-    def init_fig(self):
+    def init_fig(self, **kwargs):
         pass
 
     def update_fig(self):
@@ -68,9 +67,6 @@ class RoutingAlg():
     def print_current_status(self):
         pass
 
-    def set_steps(self, steps):
-        self.ncount = steps
-
     def calculate_gcr(self, start, finish):
         gcr = geod.inverse([start[0]], [start[1]], [finish[0]], [
             finish[1]])  # calculate distance between start and end according to Vincents approach, return dictionary
@@ -82,7 +78,7 @@ class RoutingAlg():
     def check_for_positive_constraints(self, constraint_list):
         pass
 
-    def terminate(self):
+    def terminate(self, **kwargs):
         logger.info(form.get_line_string())
         logger.info('Terminating...')
 

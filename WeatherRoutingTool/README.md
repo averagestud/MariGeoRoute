@@ -4,6 +4,8 @@
 
 The routing tool can be installed in two ways: via the file requirements.txt and via the file setup.py. If the latter option is chosen, the WRT can also be directly imported into other python packages.
 
+Only Python < 3.11 supported!
+
 ### Installation via the requirements.txt
 
 - generate a virtual environment e.g. via `python -m venv "venv"`
@@ -30,7 +32,108 @@ The routing tool can be installed in two ways: via the file requirements.txt and
   - fix smt to version 1.3.0 (`smt==1.3.9`)
   - install maripower: `pip install -e maripower`
 
-### Run the software
+## Configuration
+
+Configuration of the Weather Routing Tool can be done by providing a json file. An example is given by `config.example.json`.
+
+The configuration file has to be provided when calling the Weather Routing Tool from the command line:
+```shell
+python WeatherRoutingTool/execute_routing.py -f <path>/config.json
+```
+
+Additionally, it's possible to define files for logging (separately for info and warning level) and if debugging mode should be used.
+Check the help text to get an overview of all CLI arguments:
+```shell
+$ python WeatherRoutingTool/execute_routing.py --help
+usage: execute_routing.py [-h] -f FILE [--warnings-log-file WARNINGS_LOG_FILE] [--info-log-file INFO_LOG_FILE] [--debug DEBUG]
+
+Weather Routing Tool
+
+options:
+  -h, --help            show this help message and exit
+  -f FILE, --file FILE  Config file name (absolute path)
+  --warnings-log-file WARNINGS_LOG_FILE
+                        Logging file name (absolute path) for warnings and above.
+  --info-log-file INFO_LOG_FILE
+                        Logging file name (absolute path) for info and above.
+  --debug DEBUG         Enable debug mode. <True|False>. Defaults to 'False'.
+```
+
+Some variables have to be set using environment variables (see below).
+
+### Config file
+
+The following lists contain information on each variable which can be set.
+
+Required variables (no default values provided):
+- `COURSES_FILE`: path to file that acts as intermediate storage for courses per routing step
+- `DEFAULT_MAP`: bbox in which route optimization is performed (lat_min, lon_min, lat_max, lon_max)
+- `DEFAULT_ROUTE`: start and end point of the route (lat_start, lon_start, lat_end, lon_end)
+- `DEPARTURE_TIME`: start time of travelling, format: 'yyyy-mm-ddThh:mmZ'
+- `DEPTH_DATA`: path to depth data
+- `ROUTE_PATH`: path to json file to which the route will be written
+- `WEATHER_DATA`: path to weather data
+
+Recommended variables (default values provided but might be inaccurate/unsuitable):
+- `BOAT_DRAUGHT`: in m
+- `BOAT_SPEED`: in m/s
+- `DATA_MODE`: options: 'automatic', 'from_file', 'odc'
+
+Optional variables (default values provided and don't need to be changed normally):
+- `ALGORITHM_TYPE`: options: 'isofuel'
+- `CONSTRAINTS_LIST`: options: 'land_crossing_global_land_mask', 'land_crossing_polygons', 'seamarks', 'water_depth', 'on_map', 'via_waypoints'
+- `DELTA_FUEL`: amount of fuel per routing step (kg)
+- `DELTA_TIME_FORECAST`: time resolution of weather forecast (hours)
+- `GENETIC_MUTATION_TYPE`: type for mutation (options: 'grid_based')
+- `GENETIC_NUMBER_GENERATIONS`: number of generations for genetic algorithm
+- `GENETIC_NUMBER_OFFSPRINGS`: number of offsprings for genetic algorithm
+- `GENETIC_POPULATION_SIZE`: population size for genetic algorithm
+- `GENETIC_POPULATION_TYPE`: type for initial population (options: 'grid_based')
+- `INTERMEDIATE_WAYPOINTS`: [[lat_one,lon_one], [lat_two,lon_two] ... ]
+- `ISOCHRONE_MINIMISATION_CRITERION`: options: 'dist', 'squareddist_over_disttodest'
+- `ISOCHRONE_PRUNE_BEARING`: definitions of the angles for pruning
+- `ISOCHRONE_PRUNE_GCR_CENTERED`: symmetry axis for pruning
+- `ISOCHRONE_PRUNE_SECTOR_DEG_HALF`: half of the angular range of azimuth angle considered for pruning
+- `ISOCHRONE_PRUNE_SEGMENTS`: total number of azimuth bins used for pruning in prune sector
+- `ROUTER_HDGS_INCREMENTS_DEG`: increment of headings
+- `ROUTER_HDGS_SEGMENTS`: otal number of headings : put even number!!
+- `ROUTING_STEPS`: number of routing steps
+- `TIME_FORECAST`: forecast hours weather
+
+### Environment variables
+
+Credentials for the Copernicus Marine Environment Monitoring Service (CMEMS) to download weather/ocean data:
+
+- `CMEMS_USERNAME`
+- `CMEMS_PASSWORD`
+
+If not provided `DATA_MODE='automatic'` cannot be used.
+
+Configuration parameter for the database which stores OpenSeaMap data (used in the constraints modules):
+
+- `WRT_DB_HOST`
+- `WRT_DB_PORT`
+- `WRT_DB_DATABASE`
+- `WRT_DB_USERNAME`
+- `WRT_DB_PASSWORD`
+
+If not provided the 'land_crossing_polygons' and 'seamarks' options of `CONSTRAINTS_LIST` cannot be used.
+
+Path for storing figures (mainly for debugging purposes):
+
+- `WRT_FIGURE_PATH`
+
+If not set or the path doesn't exist or access rights are wrong, no figures will be saved.
+
+### Logging and Debugging
+
+All log messages are sent to stdout by default. In addition, info and warning logs can be saved separately to file.
+Debugging mode can be enabled (disabled by default) which sets the stream (stdout) logging level to debug.
+
+The top-level logger is named "WRT". Child loggers are following the scheme "WRT.<child-name>".
+They inherit the top-level loggers' logging level.
+
+## Run the software
 
 Before running the WRT, the necessary input data needs to be setup. Please follow these steps:
 
@@ -56,9 +159,9 @@ Before running the WRT, the necessary input data needs to be setup. Please follo
 4. Adjust the start and endpoint of the route as well as the departure time using the variables 'DEFAULT_ROUTE' and 'START_TIME'. The variable 'DEFAULT_MAP' needs to be set to a map size that encompasses the final route. The boat speed and draught can be configured via the variables 'BOAT_SPEED' and 'BOAT_DRAUGHT'.
 5. Initiate the routing procedure by executing the file 'execute_routing.py' *out of the base directory*:
 
-   ```sh
-   python WeatherRoutingTool/execute_routing.py
-   ```
+    ```sh
+    python WeatherRoutingTool/execute_routing.py -f <path>/config.json
+    ```
 
 ![Fig. 1: Basic installation workflow for the WeatherRoutingTool.](figures_readme/sequence_diagram_installation_workflow.png)
 
@@ -110,9 +213,61 @@ heading/course/azimuth/variants = the angular distance towards North on the gran
 lats_per_step: (M,N) array of latitudes for different routes (shape N=headings+1) and routing steps (shape M=steps,decreasing)</br>
 lons_per_step: (M,N) array of longitude for different routes (shape N=headings+1) and routing steps (shape M=steps,decreasing)
 
+## Genetic Algorithm
+
+### General concept
+
+Five phases:
+1. Initial population
+   - Consists of candidate solutions (also called individuals) which have a set of properties (also called parameters, variables, genes)
+1. Fitness function (evaluation)
+1. Selection
+1. Crossover
+1. Mutation
+
+Abort criteria:
+- Maximum number of generations
+- Satisfactory fitness level has been reached
+
+### Routing Problem
+
+Phases:
+1. Initial population
+   - route_through_array
+. Fitness function (evaluation)
+   - mariPower
+1. Selection
+1. Crossover
+   - only routes which cross geometrically are used for crossover
+1. Mutation
+   - in principle random but can be restricted
+
+### Useful links:
+
+ - https://pymoo.org/index.html
+ - monitoring convergence (e.g. using Running Matrix):
+    - https://pymoo.org/getting_started/part_4.html
+    - https://ieeexplore.ieee.org/document/9185546
+
+### Variable definitions: debug output
+ - n_gen: current generation
+ - n_nds: number of non-dominating solutions
+ - cv_min: minimum constraint violation
+ - cv_avg: average constraint violation
+ - eps: epsilon?
+ - indicator: indicator to monitor algorithm performance; can be Hypervolume, Running Metric ...
+
+### General Notes:
+ - res.F = None: quick-and-dirty hack possible by passing 'return_least_infeasible = True' to init function of NSGAII
+ - chain of function calls until RoutingProblem._evaluate() is called:
+   - core/algorithms.run -> core/algorithms.next -> core/evaluator.eval -> core/evaluator._eval
+ - chain of function calls until crossover/mutation/selection are called:
+   - core/algorithms.run -> core/algorithms.next -> core/algorithm.infill -> algorithms/base/genetic._infill
+
+
 ## Fuel estimation -- The communication between mariPower and the WRT
 
-Information is transfered via a netCDF file between the WRT and mariPower. The coordinate pairs, courses, the ship speed and the time for which the power estimation needs to be performed are written to this file by the WRT. This information is read by mariPower, the calculation of the ship parameters is performed and the corresponding results are added as separate variables to the xarray dataset. The structure of the xarray dataset after the ship parameters have been written is the following:
+Information is transferred via a netCDF file between the WRT and mariPower. The coordinate pairs, courses, the ship speed and the time for which the power estimation needs to be performed are written to this file by the WRT. This information is read by mariPower, the calculation of the ship parameters is performed and the corresponding results are added as separate variables to the xarray dataset. The structure of the xarray dataset after the ship parameters have been written is the following:
 
 ```sh
 Dimensions:                    (it_pos: 2, it_course: 3)
