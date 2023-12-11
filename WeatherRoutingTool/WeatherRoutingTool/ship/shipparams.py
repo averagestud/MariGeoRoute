@@ -1,32 +1,33 @@
 import logging
 
 import numpy as np
+from WeatherRoutingTool.utils.unit_conversion import UnitVar
 
 logger = logging.getLogger('WRT.ship')
 
 
 class ShipParams():
-    fuel: np.ndarray  # (kg)
-    power: np.ndarray  # (W)
-    rpm: np.ndarray  # (Hz)
-    speed: np.ndarray  # (m/s)
-    r_calm: np.ndarray  # (N)
-    r_wind: np.ndarray  # (N)
-    r_waves: np.ndarray  # (N)
-    r_shallow: np.ndarray  # (N)
-    r_roughness: np.ndarray  # (N)
+    fuel: UnitVar  # (kg)
+    power: UnitVar  # (W)
+    rpm: UnitVar  # (Hz)
+    speed: UnitVar  # (m/s)
+    r_calm: UnitVar  # (N)
+    r_wind: UnitVar  # (N)
+    r_waves: UnitVar  # (N)
+    r_shallow: UnitVar  # (N)
+    r_roughness: UnitVar  # (N)
     fuel_type: str
 
     def __init__(self, fuel, power, rpm, speed, r_calm, r_wind, r_waves, r_shallow, r_roughness):
-        self.fuel = fuel
-        self.power = power
-        self.rpm = rpm
-        self.speed = speed
-        self.r_calm = r_calm
-        self.r_wind = r_wind
-        self.r_waves = r_waves
-        self.r_shallow = r_shallow
-        self.r_roughness = r_roughness
+        self.fuel = UnitVar(fuel, 'kg/s', {'t/h': 3.6, 'mt/h': 3.6/1000})
+        self.power = UnitVar(power, "W", {'kW' : 1./1000})
+        self.rpm = UnitVar(rpm, "Hz", {})
+        self.speed = UnitVar(speed, "m/s", {"km/h": 3.6})
+        self.r_calm = UnitVar(r_calm, "N", {"kN": 1./1000})
+        self.r_wind = UnitVar(r_wind, "N", {"kN": 1./1000})
+        self.r_waves = UnitVar(r_waves, "N", {"kN": 1./1000})
+        self.r_shallow = UnitVar(r_shallow, "N", {"kN": 1./1000})
+        self.r_roughness = UnitVar(r_roughness, "N", {"kN": 1./1000})
 
         self.fuel_type = 'HFO'
 
@@ -49,16 +50,16 @@ class ShipParams():
                    r_roughness=np.full(shape=ncoorinate_points, fill_value=0), )
 
     def print(self):
-        logger.info('fuel: ', self.fuel)
-        logger.info('rpm: ', self.rpm)
-        logger.info('power: ', self.power)
-        logger.info('speed: ', self.speed)
-        logger.info('r_calm: ', self.r_calm)
-        logger.info('r_wind: ', self.r_wind)
-        logger.info('r_waves: ', self.r_waves)
-        logger.info('r_shallow: ', self.r_shallow)
-        logger.info('r_roughness: ', self.r_roughness)
-        logger.info('fuel_type: ', self.fuel_type)
+        logger.info('fuel: ', str(self.fuel))
+        logger.info('rpm: ', str(self.rpm))
+        logger.info('power: ', str(self.power))
+        logger.info('speed: ', str(self.speed))
+        logger.info('r_calm: ', str(self.r_calm))
+        logger.info('r_wind: ', str(self.r_wind))
+        logger.info('r_waves: ', str(self.r_waves))
+        logger.info('r_shallow: ', str(self.r_shallow))
+        logger.info('r_roughness: ', str(self.r_roughness))
+        logger.info('fuel_type: ', str(self.fuel_type))
 
     def print_shape(self):
         logger.info('fuel: ', self.fuel.shape)
@@ -82,35 +83,35 @@ class ShipParams():
         self.r_shallow = np.repeat(self.r_shallow, variant_segments + 1, axis=1)
         self.r_roughness = np.repeat(self.r_roughness, variant_segments + 1, axis=1)
 
-    def get_power(self):
-        return self.power
+    def get_power(self, unit="W"):
+        return self.power.get_var(unit)
 
-    def get_fuel(self):
-        return self.fuel
+    def get_fuel(self, unit="mt/h"):
+        return self.fuel.get_var(unit)
 
-    def get_rwind(self):
-        return self.r_wind
+    def get_rwind(self, unit="N"):
+        return self.r_wind.get_var(unit)
 
-    def get_rcalm(self):
-        return self.r_calm
+    def get_rcalm(self, unit="N"):
+        return self.r_calm.get_var(unit)
 
-    def get_rwaves(self):
-        return self.r_waves
+    def get_rwaves(self, unit="N"):
+        return self.r_waves.get_var(unit)
 
-    def get_rshallow(self):
-        return self.r_shallow
+    def get_rshallow(self, unit="N"):
+        return self.r_shallow.get_var(unit)
 
-    def get_rroughness(self):
-        return self.r_roughness
+    def get_rroughness(self, unit="N"):
+        return self.r_roughness.get_var(unit)
 
     def get_fuel_type(self):
         return self.fuel_type
 
-    def get_rpm(self):
-        return self.rpm
+    def get_rpm(self, unit="Hz"):
+        return self.rpm.get_var(unit)
 
-    def get_speed(self):
-        return self.speed
+    def get_speed(self, unit="m/s"):
+        return self.speed.get_var(unit)
 
     def set_speed(self, new_speed):
         self.speed = new_speed

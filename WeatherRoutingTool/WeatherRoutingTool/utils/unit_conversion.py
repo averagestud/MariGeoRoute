@@ -125,3 +125,28 @@ def cut_angles(angles):
     angles[angles > 360] = angles[angles > 360] - 360
     angles[angles < 0] = 360 + angles[angles < 0]
     return angles
+
+class UnitVar:
+    var: np.ndarray
+    standard_unit: str
+    available_units: dict
+
+    def __init__(self, var, standard_unit, available_units):
+        self.standard_unit = standard_unit
+        self.available_units = available_units
+        self.var = var
+
+    def get_var(self, unit):
+        if (unit == '') or (unit == self.standard_unit):
+            return self.var
+        else:
+            for key in self.available_units:
+                if unit == key:
+                    return self.var * self.available_units[key]
+
+        raise ValueError('The unit you passed is not supported.')
+
+
+
+
+
