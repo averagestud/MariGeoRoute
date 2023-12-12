@@ -254,18 +254,12 @@ class IsoBased(RoutingAlg):
                     self.find_every_route_reaching_destination()
                     number_of_current_step_routes = self.current_step_routes.shape[0]
 
-                    if self.number_of_routes < number_of_current_step_routes:
-                        is_all_routes_in_current_step = False
+                    if self.number_of_routes <= number_of_current_step_routes:
                         remaining_routes = self.number_of_routes
-                        self.find_routes_reaching_destination_in_current_step(is_all_routes_in_current_step, remaining_routes)
-                        break
-                    elif self.number_of_routes == number_of_current_step_routes:
-                        is_all_routes_in_current_step = True
-                        self.find_routes_reaching_destination_in_current_step(is_all_routes_in_current_step)
+                        self.find_routes_reaching_destination_in_current_step(remaining_routes)
                         break
                     else:
-                        is_all_routes_in_current_step = True
-                        self.find_routes_reaching_destination_in_current_step(is_all_routes_in_current_step)
+                        self.find_routes_reaching_destination_in_current_step(number_of_current_step_routes)
                         if self.next_step_routes.shape[0] == 0:
                             logger.warning('No routes left for execution, terminating!')
                             break
@@ -360,82 +354,79 @@ class IsoBased(RoutingAlg):
         self.count += 1
 
 
-    #This function
-    #
-    #
+
     def find_every_route_reaching_destination(self):
-        # ===== make dataframe of nd arrays===========
-        #df = pd.DataFrame(st_index, columns=['st_index'])
+        """
+        This function finds routes reaching the destination in the current last step of routing.
+        First, it creates a dataframe with origin point of the current route segments.
+        The route segments are grouped according to the origin point.
+        'dist' is the distance that could be travelled with available amount of fuel.
+        'dist_dest' is the distance from origin point to the destination.
+        'st_index' is storing the same index order of other nd arrays such as self.lats_per_step
+         before grouping. So that, later it is referred in find_routes_reaching_destination_in_current_step function.
+        (acts as a key from the dataframe to other arrays such as self.lats_per_step )
+
+        Routes from the current step reaching the destination are stored in 'current_step_routes' dataframe.
+        Only the one route segment per branch originating from the same origin point that minimize the fuel is stored in current_step routes.
+        Routes which are not reaching the destination in the current step are stored in 'next_step_routes' dataframe.
+        In this case, all routes originating from the same origin point are stored in the dataframe.
+        """
+
         df_current_last_step = pd.DataFrame()
         df_current_last_step['st_lat'] = self.lats_per_step[1, :]
         df_current_last_step['st_lon'] = self.lons_per_step[1, :]
         df_current_last_step['dist'] = self.current_last_step_dist
         df_current_last_step['dist_dest'] = self.current_last_step_dist_to_dest
-        #df_current_last_step['fuel'] = self.current_last_step_fuel
-        #df_current_last_step['fuel'] = self.shipparams_per_step[-1, :].fuel * (self.starttime_per_step[-1] - self.starttime_per_step[-2])
         df_current_last_step['fuel']  = self.shipparams_per_step.get_fuel()[0, :]
 
         len_df = df_current_last_step.shape[0]
-        #===============check initial index is needed here?=======================
+
         df_current_last_step.set_index(pd.RangeIndex(start=0, stop=len_df),
                                        inplace=True)
         df_current_last_step.rename_axis('st_index', inplace=True)
-
-        #df_current_last_step.to_csv('route_data.csv', index=False)
-
         df_current_last_step = df_current_last_step.reset_index()
-
         df_current_last_step.set_index(['st_lat', 'st_lon'], inplace=True, drop = False)
-
-        # Group by 'st_lat' and 'st_lon'
         df_grouped_by_routes_has_same_origin = df_current_last_step.groupby(level=['st_lat', 'st_lon'])
 
-        # List of unique combinations of 'st_lat' and 'st_lon'
         unique_origins = df_grouped_by_routes_has_same_origin.groups.keys()
 
-        # Dataframe for this step routing
         self.current_step_routes = pd.DataFrame()
-        # Dataframe for next step routing
         self.next_step_routes = pd.DataFrame()
 
-        # Iterate through unique combinations and extract specific route groups dynamically
         for unique_key in unique_origins:
             specific_route_group = df_grouped_by_routes_has_same_origin.get_group(unique_key)
-            #print(f"Group key: {unique_key}")
 
             df_reaching_destination = specific_route_group[
                 specific_route_group['dist'] >= specific_route_group[
                     'dist_dest']]
-
-            # Find routes reaching the destination in this step
             num_rows = df_reaching_destination.shape[0]
 
-            if num_rows > 0:  # Routes reaching the destination in this step
-                # final pruning, min fuel among the routes reaching the destination
+            if num_rows > 0:
                 min_fuel = df_reaching_destination['fuel'].min()
                 row_min_fuel = df_reaching_destination[
                     df_reaching_destination['fuel'] == min_fuel]
                 self.current_step_routes = pd.concat([self.current_step_routes, row_min_fuel], ignore_index = True)
-            else:  # Routes forward to next routing step
+            else:
                 self.next_step_routes= pd.concat([self.next_step_routes, specific_route_group], ignore_index = True)
-                # Continue prunning
 
 
 
-    def find_routes_reaching_destination_in_current_step(self, is_all_current_routes, remaining_routes = 0):
-        self.current_step_routes = self.current_step_routes.drop_duplicates('fuel')
-        current_step_routes_sort_by_fuel = self.current_step_routes.sort_values(by=['fuel'])
 
+    def find_routes_reaching_destination_in_current_step(self, remaining_routes = 0):
+        """
+        In this function, different routes obtained from 'find_every_route_reaching_destination'
+        and stored in current_step_routes dataframe are sorted by minimum fuel.
+        The number of routes that are selected specified by the variable remaining_routes.
+
+        """
+        self.current_step_routes_sort_by_fuel = self.current_step_routes.drop_duplicates('fuel')
+        current_step_routes_sort_by_fuel = self.current_step_routes_sort_by_fuel.sort_values(by=['fuel'])
         self.route_list = []
-        count = 0
-        if is_all_current_routes:
-            route_df =  current_step_routes_sort_by_fuel['st_index']
-        else:
-            route_df = current_step_routes_sort_by_fuel['st_index'].head(remaining_routes)
+        route_df = current_step_routes_sort_by_fuel['st_index'].head(remaining_routes)
 
-        #for idxs in current_step_routes_sort_by_fuel['st_index']:
         for idxs in route_df:
             self.route_list.append(self.make_route_object(idxs))
+            self.plot_routes(idxs)
 
 
     def make_route_object(self, idxs):
@@ -482,12 +473,7 @@ class IsoBased(RoutingAlg):
         return route
         '''
 
-        fig = self.fig
-        route_ensemble = []
 
-        fig, ax = graphics.generate_basemap(self.fig, self.depth, self.start, self.finish)
-
-        count_routeseg = lats_per_step.shape[0]
         #print('count', count_routeseg)
         #print('lons_per_step', lons_per_step)
         #print('lats_per_step', lats_per_step)
@@ -505,46 +491,43 @@ class IsoBased(RoutingAlg):
             fig.canvas.draw()
             fig.canvas.flush_events()
         '''
+
+
+
+    def plot_routes(self, idxs):
+        """
+        Plot every complete individual route that is reaching the destination
+        """
+        fig = self.fig
+        fig, ax = graphics.generate_basemap(self.fig, self.depth, self.start,
+                                            self.finish)
+
+        lats_per_step = self.lats_per_step[:, idxs]
+        lons_per_step = self.lons_per_step[:, idxs]
+
         route, = ax.plot(lons_per_step,
-                              lats_per_step, color="firebrick")
+                         lats_per_step, color="firebrick")
+
+        route_ensemble = []
         route_ensemble.append(route)
+
         route.set_xdata(lons_per_step)
         route.set_ydata(lats_per_step)
         fig.canvas.draw()
         fig.canvas.flush_events()
 
-        # plot lines
-        #self.ax.plot(x,y)
-
-
         final_path = self.figure_path + '/fig' + str(
-            self.count) +'_route_'+str(idxs)  + '.png'
+            self.count) + '_route_' + str(idxs) + '.png'
         logger.info('Save updated figure to ' + final_path)
         plt.savefig(final_path)
 
-    def Plot_routes(self, status):
-        fig = self.fig
-        route_ensemble = []
-        self.ax.remove()
-        self.generate_basemap()
 
-        count_routeseg = self.lats_per_step.shape[1]
-
-        for iRoute in range(0, count_routeseg):
-            route, = self.ax.plot(self.lons_per_step[:, 0], self.lats_per_step[:, 0], color="firebrick")
-            route_ensemble.append(route)
-
-        for iRoute in range(0, count_routeseg):
-            route_ensemble[iRoute].set_xdata(self.lons_per_step[:, iRoute])
-            route_ensemble[iRoute].set_ydata(self.lats_per_step[:, iRoute])
-            fig.canvas.draw()
-            fig.canvas.flush_events()
-
-        final_path = self.figure_path + '/fig' + str(self.count) + status + '.png'
-        logger.info('Save updated figure to ' + final_path)
-        plt.savefig(final_path)
 
     def set_next_step_routes(self):
+        """
+        Updating all arrays according to the indices of the routes that need to be further
+        processed in the next routing step
+        """
         # sorting order matters here????
         idxs = self.next_step_routes['st_index']
         print('indices', idxs)
@@ -900,9 +883,6 @@ class IsoBased(RoutingAlg):
 
         reaching_dest = np.any(dist_to_dest['s12'] < dist)
 
-        if debug:
-            print('reaching dest:', reaching_dest)
-
         move = geod.direct(self.get_current_lats(), self.get_current_lons(),
                            self.current_variant, dist)
 
@@ -927,24 +907,12 @@ class IsoBased(RoutingAlg):
                         move['azi2'][i] = dist_to_dest['azi1'][i]
                         move['lat2'][i] = new_lat[i]
                         move['lon2'][i] = new_lon[i]
-                        #move['iterations'][i] = -99
-                        '''
-                        fuel = ship_params.get_fuel()
-                        dist = geod.inverse(self.get_current_lats(), self.get_current_lons(),
-                        np.full(self.get_current_lats().shape, self.finish_temp[0]),
-                        np.full(self.get_current_lons().shape, self.finish_temp[1]))
-                        delta_time = self.get_time(bs, dist['s12'])
-                        delta_fuel = fuel * delta_time
-                        '''
             else:
                 self.is_pos_constraint_step = True
 
             #move_dest =  {'azi2': dist_to_dest['azi1'], 'lat2': new_lat, 'lon2': new_lon,
             #        'iterations': -99}  # compare to  'return {'lat2': lat2, 'lon2': lon2, 'azi2': azi2,
             # 'iterations':  # iterations}' by geod.direct
-
-
-
         # form.print_step('move=' + str(move),1)
         return move
 
