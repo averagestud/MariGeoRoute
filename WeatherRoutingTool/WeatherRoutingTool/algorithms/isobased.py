@@ -108,7 +108,7 @@ class IsoBased(RoutingAlg):
         self.gcr_azi_temp = self.gcr_azi
 
         self.is_find_more_routes = False
-        self.number_of_routes = 16
+        self.number_of_routes = 2
         self.current_number_of_routes = 0
 
         self.minimisation_criterion = 'squareddist_over_disttodest'
@@ -237,9 +237,12 @@ class IsoBased(RoutingAlg):
         if self.number_of_routes > 1:
             self.is_find_more_routes = True
         routing_steps = self.ncount
+
+
         for i in range(0, routing_steps):
             logger.info(form.get_line_string())
             logger.info('Step ' + str(i))
+            print('i = ',i)
             print('i = ',i)
             self.define_variants_per_step()
             self.move_boat_direct(wt, boat, constraints_list)
@@ -252,23 +255,26 @@ class IsoBased(RoutingAlg):
                     number_of_current_step_routes = self.current_step_routes.shape[0]
 
                     if self.number_of_routes < number_of_current_step_routes:
-                        is_all_current_routes = False
+                        is_all_routes_in_current_step = False
                         remaining_routes = self.number_of_routes
-                        self.find_routes_reaching_destination_in_current_step(is_all_current_routes, remaining_routes)
+                        self.find_routes_reaching_destination_in_current_step(is_all_routes_in_current_step, remaining_routes)
                         break
                     elif self.number_of_routes == number_of_current_step_routes:
-                        is_all_current_routes = True
-                        self.find_routes_reaching_destination_in_current_step(is_all_current_routes)
+                        is_all_routes_in_current_step = True
+                        self.find_routes_reaching_destination_in_current_step(is_all_routes_in_current_step)
                         break
                     else:
-                        is_all_current_routes = True
-                        self.find_routes_reaching_destination_in_current_step(is_all_current_routes)
-                        self.number_of_routes = self.number_of_routes - number_of_current_step_routes
+                        is_all_routes_in_current_step = True
+                        self.find_routes_reaching_destination_in_current_step(is_all_routes_in_current_step)
+                        if self.next_step_routes.shape[0] == 0:
+                            logger.warning('No routes left for execution, terminating!')
+                            break
+                        else:
+                            self.number_of_routes = self.number_of_routes - number_of_current_step_routes
+
                         self.set_next_step_routes()
                         self.pruning_per_step(True)
                         self.is_last_step = False
-                        print('lat', self.lats_per_step)
-                        print('lon', self.lons_per_step)
                         if i == (routing_steps-1):
                             routing_steps += routing_steps
                         continue
@@ -340,8 +346,6 @@ class IsoBased(RoutingAlg):
         if (self.is_last_step or self.is_pos_constraint_step):
             delta_time_last_step, delta_fuel_last_step, dist_last_step = self.get_delta_variables_netCDF_last_step(ship_params, bs)
             if (self.is_last_step):
-
-                print('bool_arr_reached_final', self.bool_arr_reached_final)
                 for i in range(len(self.bool_arr_reached_final)):
                     if self.bool_arr_reached_final[i]:
                         delta_time[i] = delta_time_last_step[i]
@@ -355,6 +359,10 @@ class IsoBased(RoutingAlg):
         self.update_shipparams(ship_params)
         self.count += 1
 
+
+    #This function
+    #
+    #
     def find_every_route_reaching_destination(self):
         # ===== make dataframe of nd arrays===========
         #df = pd.DataFrame(st_index, columns=['st_index'])
@@ -363,9 +371,12 @@ class IsoBased(RoutingAlg):
         df_current_last_step['st_lon'] = self.lons_per_step[1, :]
         df_current_last_step['dist'] = self.current_last_step_dist
         df_current_last_step['dist_dest'] = self.current_last_step_dist_to_dest
-        df_current_last_step['fuel'] = self.current_last_step_fuel
-        len_df = df_current_last_step.shape[0]
+        #df_current_last_step['fuel'] = self.current_last_step_fuel
+        #df_current_last_step['fuel'] = self.shipparams_per_step[-1, :].fuel * (self.starttime_per_step[-1] - self.starttime_per_step[-2])
+        df_current_last_step['fuel']  = self.shipparams_per_step.get_fuel()[0, :]
 
+        len_df = df_current_last_step.shape[0]
+        #===============check initial index is needed here?=======================
         df_current_last_step.set_index(pd.RangeIndex(start=0, stop=len_df),
                                        inplace=True)
         df_current_last_step.rename_axis('st_index', inplace=True)
@@ -392,7 +403,6 @@ class IsoBased(RoutingAlg):
             specific_route_group = df_grouped_by_routes_has_same_origin.get_group(unique_key)
             #print(f"Group key: {unique_key}")
 
-
             df_reaching_destination = specific_route_group[
                 specific_route_group['dist'] >= specific_route_group[
                     'dist_dest']]
@@ -401,12 +411,8 @@ class IsoBased(RoutingAlg):
             num_rows = df_reaching_destination.shape[0]
 
             if num_rows > 0:  # Routes reaching the destination in this step
-
                 # final pruning, min fuel among the routes reaching the destination
-                max_dist = df_reaching_destination['dist'].max()
                 min_fuel = df_reaching_destination['fuel'].min()
-                row_max_dist = df_reaching_destination[
-                    df_reaching_destination['dist'] == max_dist]
                 row_min_fuel = df_reaching_destination[
                     df_reaching_destination['fuel'] == min_fuel]
                 self.current_step_routes = pd.concat([self.current_step_routes, row_min_fuel], ignore_index = True)
@@ -415,23 +421,18 @@ class IsoBased(RoutingAlg):
                 # Continue prunning
 
 
-        print('This step routes:')
-        print(self.current_step_routes)
-        print('Next step routes:')
-        print(self.next_step_routes)
 
     def find_routes_reaching_destination_in_current_step(self, is_all_current_routes, remaining_routes = 0):
+        self.current_step_routes = self.current_step_routes.drop_duplicates('fuel')
         current_step_routes_sort_by_fuel = self.current_step_routes.sort_values(by=['fuel'])
-        print('sorted')
-        print(current_step_routes_sort_by_fuel)
+
         self.route_list = []
         count = 0
         if is_all_current_routes:
             route_df =  current_step_routes_sort_by_fuel['st_index']
         else:
-            print('remaining routes', remaining_routes)
             route_df = current_step_routes_sort_by_fuel['st_index'].head(remaining_routes)
-        print('result_df',route_df)
+
         #for idxs in current_step_routes_sort_by_fuel['st_index']:
         for idxs in route_df:
             self.route_list.append(self.make_route_object(idxs))
@@ -483,8 +484,8 @@ class IsoBased(RoutingAlg):
 
         fig = self.fig
         route_ensemble = []
-        self.ax.remove()
-        self.generate_basemap()
+
+        fig, ax = graphics.generate_basemap(self.fig, self.depth, self.start, self.finish)
 
         count_routeseg = lats_per_step.shape[0]
         #print('count', count_routeseg)
@@ -504,7 +505,7 @@ class IsoBased(RoutingAlg):
             fig.canvas.draw()
             fig.canvas.flush_events()
         '''
-        route, = self.ax.plot(lons_per_step,
+        route, = ax.plot(lons_per_step,
                               lats_per_step, color="firebrick")
         route_ensemble.append(route)
         route.set_xdata(lons_per_step)
@@ -895,7 +896,7 @@ class IsoBased(RoutingAlg):
         # ToDo: use logger.debug and args.debug
         if debug:
             print('dist_to_dest:', dist_to_dest['s12'])
-            print('dist traveled:', dist)
+            #print('dist traveled:', dist)
 
         reaching_dest = np.any(dist_to_dest['s12'] < dist)
 
@@ -904,8 +905,7 @@ class IsoBased(RoutingAlg):
 
         move = geod.direct(self.get_current_lats(), self.get_current_lons(),
                            self.current_variant, dist)
-        print('move_before', move)
-        print('move ' , move)
+
         if reaching_dest:
             reached_final = (self.finish_temp[0] == self.finish[0]) & (self.finish_temp[1] == self.finish[1])
 
@@ -917,11 +917,11 @@ class IsoBased(RoutingAlg):
 
             if reached_final:
                 self.is_last_step = True
-                self.current_last_step_dist = dist
+                self.current_last_step_dist = dist.copy()
                 self.current_last_step_dist_to_dest = dist_to_dest['s12']
 
                 self.bool_arr_reached_final = dist_to_dest['s12'] < dist
-                print('bool_arr_reached_final', self.bool_arr_reached_final)
+
                 for i in range(len(self.bool_arr_reached_final)):
                     if self.bool_arr_reached_final[i]:
                         move['azi2'][i] = dist_to_dest['azi1'][i]
@@ -942,7 +942,7 @@ class IsoBased(RoutingAlg):
             #move_dest =  {'azi2': dist_to_dest['azi1'], 'lat2': new_lat, 'lon2': new_lon,
             #        'iterations': -99}  # compare to  'return {'lat2': lat2, 'lon2': lon2, 'azi2': azi2,
             # 'iterations':  # iterations}' by geod.direct
-            print('move_after', move)
+
 
 
         # form.print_step('move=' + str(move),1)
@@ -1026,7 +1026,7 @@ class IsoBased(RoutingAlg):
 
         if (self.showDepth):
             # decrease resolution and extend of depth data to prevent memory issues when plotting
-            ds_depth = water_depth.depth_data.coarsen(latitude=10, longitude=10, boundary='exact').mean()
+            ds_depth = water_depth.depth_data.coarsen(latitude=10, longitude=10, boundary='trim').mean()
             ds_depth_coarsened = ds_depth.compute()
 
             self.depth = ds_depth_coarsened.where(
