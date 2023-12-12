@@ -119,6 +119,8 @@ class IsoBased(RoutingAlg):
         self.set_variant_segments(config.ROUTER_HDGS_SEGMENTS, config.ROUTER_HDGS_INCREMENTS_DEG)
         self.set_minimisation_criterion(config.ISOCHRONE_MINIMISATION_CRITERION)
 
+        self.path_to_route_folder = config.ROUTE_PATH
+
     def print_init(self):
         RoutingAlg.print_init(self)
         logger.info(form.get_log_step('pruning settings', 1))
@@ -302,7 +304,9 @@ class IsoBased(RoutingAlg):
             #self.update_fig('p')
             route = self.terminate()
             return route
-        #else:
+        else:
+            self.route_list.sort(key=lambda x: x.get_full_fuel())
+            return self.route_list[0]
 
 
     def move_boat_direct(self, wt: WeatherCond, boat: Boat, constraint_list: ConstraintsList):
@@ -425,6 +429,9 @@ class IsoBased(RoutingAlg):
         route_df = current_step_routes_sort_by_fuel['st_index'].head(remaining_routes)
 
         for idxs in route_df:
+            self.current_number_of_routes = self.current_number_of_routes + 1
+            route_object = self.make_route_object(idxs)
+            route_object.return_route_to_API(self.path_to_route_folder + '/' + 'route_' + str(self.current_number_of_routes) + ".json")
             self.route_list.append(self.make_route_object(idxs))
             self.plot_routes(idxs)
 
@@ -436,7 +443,7 @@ class IsoBased(RoutingAlg):
             lons_per_step = self.lons_per_step[:, idxs]
             azimuth_per_step = self.azimuth_per_step[:, idxs]
             dist_per_step = self.dist_per_step[:, idxs]
-            #shipparams_per_step = self.shipparams_per_step.select(idxs)
+            shipparams_per_step = self.shipparams_per_step.get_reduced_2D_object(idxs)
 
             starttime_per_step = self.starttime_per_step[:, idxs]
 
@@ -459,7 +466,7 @@ class IsoBased(RoutingAlg):
         except IndexError:
             raise Exception('Pruned indices running out of bounds.')
 
-        '''route = RouteParams(count=self.count, start=self.start,
+        route = RouteParams(count=self.count, start=self.start,
                             finish=self.finish, gcr=self.full_dist_traveled,
                             route_type='min_time_route', time=time,
                             lats_per_step=lats_per_step,
@@ -471,7 +478,7 @@ class IsoBased(RoutingAlg):
                             )
         
         return route
-        '''
+
 
 
         #print('count', count_routeseg)
