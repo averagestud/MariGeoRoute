@@ -150,7 +150,6 @@ class ShipParams():
         self.r_shallow = self.r_shallow[:, idxs]
         self.r_roughness = self.r_roughness[:, idxs]
 
-
     def flip(self):
         # should be replaced by more careful implementation
         self.speed = self.speed[:-1]
